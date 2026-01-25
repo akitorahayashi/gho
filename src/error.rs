@@ -1,53 +1,66 @@
-use std::error::Error;
-use std::fmt::{self, Display};
-use std::io;
+//! Error types for gho.
 
-/// Library-wide error type capturing domain-neutral and underlying I/O failures.
-#[derive(Debug)]
+use thiserror::Error;
+
+/// Application-wide error type.
+#[derive(Debug, Error)]
 pub enum AppError {
-    Io(io::Error),
-    /// Configuration or environment issue that prevents command execution.
-    ConfigError(String),
-    /// Raised when a requested item cannot be located in storage.
-    ItemNotFound(String),
-}
+    #[error("IO error: {0}")]
+    Io(#[from] std::io::Error),
 
-impl Display for AppError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            AppError::Io(err) => write!(f, "{}", err),
-            AppError::ConfigError(message) => write!(f, "{message}"),
-            AppError::ItemNotFound(id) => write!(f, "Item '{id}' was not found"),
-        }
-    }
-}
+    #[error("Configuration error: {0}")]
+    Config(String),
 
-impl Error for AppError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match self {
-            AppError::Io(err) => Some(err),
-            AppError::ConfigError(_) | AppError::ItemNotFound(_) => None,
-        }
-    }
-}
+    #[error("Account not found: {0}")]
+    AccountNotFound(String),
 
-impl From<io::Error> for AppError {
-    fn from(value: io::Error) -> Self {
-        AppError::Io(value)
-    }
+    #[error("No active account configured")]
+    NoActiveAccount,
+
+    #[error("Keychain error: {0}")]
+    Keychain(String),
+
+    #[error("GitHub API error: {0}")]
+    GitHubApi(String),
+
+    #[error("Git error: {0}")]
+    Git(String),
+
+    #[error("JSON error: {0}")]
+    Json(#[from] serde_json::Error),
+
+    #[error("Network error: {0}")]
+    Network(String),
+
+    #[error("TTY required for interactive selection")]
+    TtyRequired,
+
+    #[error("Invalid input: {0}")]
+    InvalidInput(String),
 }
 
 impl AppError {
-    pub(crate) fn config_error<S: Into<String>>(message: S) -> Self {
-        AppError::ConfigError(message.into())
+    pub fn config<S: Into<String>>(msg: S) -> Self {
+        AppError::Config(msg.into())
     }
 
-    /// Provide an `io::ErrorKind`-like view for callers expecting legacy behavior.
-    pub fn kind(&self) -> io::ErrorKind {
-        match self {
-            AppError::Io(err) => err.kind(),
-            AppError::ConfigError(_) => io::ErrorKind::InvalidInput,
-            AppError::ItemNotFound(_) => io::ErrorKind::NotFound,
-        }
+    pub fn keychain<S: Into<String>>(msg: S) -> Self {
+        AppError::Keychain(msg.into())
+    }
+
+    pub fn github_api<S: Into<String>>(msg: S) -> Self {
+        AppError::GitHubApi(msg.into())
+    }
+
+    pub fn git<S: Into<String>>(msg: S) -> Self {
+        AppError::Git(msg.into())
+    }
+
+    pub fn network<S: Into<String>>(msg: S) -> Self {
+        AppError::Network(msg.into())
+    }
+
+    pub fn invalid_input<S: Into<String>>(msg: S) -> Self {
+        AppError::InvalidInput(msg.into())
     }
 }

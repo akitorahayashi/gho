@@ -1,23 +1,29 @@
+//! Storage layer for gho configuration and state.
+
 use crate::config::Config;
 use crate::error::AppError;
+use crate::models::{AccountsFile, StateFile};
 use std::fs;
-use std::path::{Component, Path, PathBuf};
+use std::path::PathBuf;
 
-pub(crate) trait Storage {
-    fn add_item(&self, id: &str, content: &str) -> Result<(), AppError>;
-    fn list_items(&self) -> Result<Vec<String>, AppError>;
-    fn delete_item(&self, id: &str) -> Result<(), AppError>;
+/// Storage abstraction for accounts and state.
+pub trait Storage {
+    fn load_accounts(&self) -> Result<AccountsFile, AppError>;
+    fn save_accounts(&self, accounts: &AccountsFile) -> Result<(), AppError>;
+    fn load_state(&self) -> Result<StateFile, AppError>;
+    fn save_state(&self, state: &StateFile) -> Result<(), AppError>;
 }
 
+/// Filesystem-based storage implementation.
 #[derive(Debug, Clone)]
-pub(crate) struct FilesystemStorage {
-    root_path: PathBuf,
+pub struct FilesystemStorage {
+    config: Config,
 }
 
 impl FilesystemStorage {
     /// Create a new storage with the given configuration.
     pub fn new(config: &Config) -> Self {
-        Self { root_path: config.storage_path.clone() }
+        Self { config: config.clone() }
     }
 
     /// Create storage with default configuration.
@@ -26,64 +32,52 @@ impl FilesystemStorage {
         Ok(Self::new(&config))
     }
 
-    fn ensure_valid_id(&self, id: &str) -> Result<(), AppError> {
-        if Self::is_id_valid(id) {
-            Ok(())
-        } else {
-            Err(AppError::config_error(format!("invalid item identifier: {id}")))
-        }
+    fn ensure_config_dir(&self) -> Result<(), AppError> {
+        fs::create_dir_all(&self.config.config_path)?;
+        Ok(())
     }
 
-    fn is_id_valid(id: &str) -> bool {
-        !id.is_empty()
-            && id.chars().all(|c| c.is_alphanumeric() || c == '-')
-            && Path::new(id).components().all(|c| matches!(c, Component::Normal(_)))
+    fn accounts_path(&self) -> PathBuf {
+        self.config.accounts_path()
     }
 
-    fn item_dir(&self, id: &str) -> PathBuf {
-        self.root_path.join(id)
-    }
-
-    fn item_file(&self, id: &str) -> PathBuf {
-        self.item_dir(id).join("item.txt")
+    fn state_path(&self) -> PathBuf {
+        self.config.state_path()
     }
 }
 
 impl Storage for FilesystemStorage {
-    fn add_item(&self, id: &str, content: &str) -> Result<(), AppError> {
-        self.ensure_valid_id(id)?;
-        let directory = self.item_dir(id);
-        fs::create_dir_all(&directory)?;
-        fs::write(self.item_file(id), content)?;
+    fn load_accounts(&self) -> Result<AccountsFile, AppError> {
+        let path = self.accounts_path();
+        if !path.exists() {
+            return Ok(AccountsFile::default());
+        }
+        let content = fs::read_to_string(&path)?;
+        let accounts: AccountsFile = serde_json::from_str(&content)?;
+        Ok(accounts)
+    }
+
+    fn save_accounts(&self, accounts: &AccountsFile) -> Result<(), AppError> {
+        self.ensure_config_dir()?;
+        let content = serde_json::to_string_pretty(accounts)?;
+        fs::write(self.accounts_path(), content)?;
         Ok(())
     }
 
-    fn list_items(&self) -> Result<Vec<String>, AppError> {
-        if !self.root_path.exists() {
-            return Ok(Vec::new());
+    fn load_state(&self) -> Result<StateFile, AppError> {
+        let path = self.state_path();
+        if !path.exists() {
+            return Ok(StateFile::default());
         }
-
-        let mut ids = Vec::new();
-        for entry in fs::read_dir(&self.root_path)? {
-            let entry = entry?;
-            if entry.path().is_dir()
-                && let Some(name) = entry.file_name().to_str()
-            {
-                ids.push(name.to_string());
-            }
-        }
-
-        ids.sort();
-        Ok(ids)
+        let content = fs::read_to_string(&path)?;
+        let state: StateFile = serde_json::from_str(&content)?;
+        Ok(state)
     }
 
-    fn delete_item(&self, id: &str) -> Result<(), AppError> {
-        self.ensure_valid_id(id)?;
-        let directory = self.item_dir(id);
-        if !directory.exists() {
-            return Err(AppError::ItemNotFound(id.to_string()));
-        }
-        fs::remove_dir_all(directory)?;
+    fn save_state(&self, state: &StateFile) -> Result<(), AppError> {
+        self.ensure_config_dir()?;
+        let content = serde_json::to_string_pretty(state)?;
+        fs::write(self.state_path(), content)?;
         Ok(())
     }
 }
@@ -91,73 +85,55 @@ impl Storage for FilesystemStorage {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::Config;
-    use std::fs;
-    use std::path::PathBuf;
+    use crate::models::{Account, AccountKind, Protocol};
     use tempfile::TempDir;
 
-    struct TestContext {
-        root: TempDir,
-    }
-
-    impl TestContext {
-        fn new() -> Self {
-            let root = TempDir::new().expect("failed to create temp dir");
-            Self { root }
-        }
-
-        fn storage(&self) -> FilesystemStorage {
-            let config = Config::with_path(self.storage_root());
-            FilesystemStorage::new(&config)
-        }
-
-        fn storage_root(&self) -> PathBuf {
-            self.root.path().join(".config").join("rs-cli-tmpl")
-        }
+    fn test_storage() -> (TempDir, FilesystemStorage) {
+        let tmp = TempDir::new().expect("failed to create temp dir");
+        let config = Config::with_path(tmp.path().join(".config").join("gho"));
+        let storage = FilesystemStorage::new(&config);
+        (tmp, storage)
     }
 
     #[test]
-    fn add_item_persists_contents() {
-        let ctx = TestContext::new();
-        let storage = ctx.storage();
-
-        storage.add_item("demo", "example content").expect("add_item should succeed");
-
-        let saved = ctx.storage_root().join("demo").join("item.txt");
-        let content = fs::read_to_string(saved).expect("failed to read saved item");
-        assert_eq!(content, "example content");
+    fn load_accounts_returns_empty_when_no_file() {
+        let (_tmp, storage) = test_storage();
+        let accounts = storage.load_accounts().expect("should succeed");
+        assert!(accounts.personal.is_empty());
+        assert!(accounts.work.is_empty());
+        assert!(accounts.active_account_id.is_none());
     }
 
     #[test]
-    fn list_items_returns_all_ids() {
-        let ctx = TestContext::new();
-        let storage = ctx.storage();
+    fn save_and_load_accounts() {
+        let (_tmp, storage) = test_storage();
+        let mut accounts = AccountsFile::default();
+        accounts.add_account(Account {
+            id: "test".to_string(),
+            kind: AccountKind::Personal,
+            username: "testuser".to_string(),
+            default_org: None,
+            protocol: Protocol::Ssh,
+            clone_dir: None,
+        });
+        accounts.active_account_id = Some("test".to_string());
 
-        storage.add_item("first", "one").unwrap();
-        storage.add_item("second", "two").unwrap();
+        storage.save_accounts(&accounts).expect("save should succeed");
+        let loaded = storage.load_accounts().expect("load should succeed");
 
-        let mut items = storage.list_items().expect("list_items succeeds");
-        items.sort();
-        assert_eq!(items, vec!["first", "second"]);
+        assert_eq!(loaded.personal.len(), 1);
+        assert_eq!(loaded.personal[0].id, "test");
+        assert_eq!(loaded.active_account_id, Some("test".to_string()));
     }
 
     #[test]
-    fn delete_item_removes_directory() {
-        let ctx = TestContext::new();
-        let storage = ctx.storage();
+    fn save_and_load_state() {
+        let (_tmp, storage) = test_storage();
+        let state = StateFile { last_org: Some("myorg".to_string()), last_repo: None };
 
-        storage.add_item("temp", "data").unwrap();
-        storage.delete_item("temp").expect("delete succeeds");
+        storage.save_state(&state).expect("save should succeed");
+        let loaded = storage.load_state().expect("load should succeed");
 
-        assert!(!ctx.storage_root().join("temp").exists());
-    }
-
-    #[test]
-    fn delete_item_fails_if_not_exists() {
-        let ctx = TestContext::new();
-        let storage = ctx.storage();
-
-        let result = storage.delete_item("nonexistent");
-        assert!(matches!(result, Err(AppError::ItemNotFound(ref id)) if id == "nonexistent"));
+        assert_eq!(loaded.last_org, Some("myorg".to_string()));
     }
 }

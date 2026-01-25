@@ -1,13 +1,5 @@
-pub mod add_item;
-pub mod delete_item;
-pub mod list_items;
+//! CLI commands for gho.
 
-use crate::error::AppError;
-use crate::storage::Storage;
-
-#[cfg(test)]
-pub(crate) mod test_support;
-
-pub(crate) trait Execute<R> {
-    fn execute(&self, storage: &impl Storage) -> Result<R, AppError>;
-}
+pub mod account;
+pub mod pr;
+pub mod repo;
