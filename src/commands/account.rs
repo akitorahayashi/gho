@@ -44,7 +44,12 @@ pub fn add(
         accounts.active_account_id = Some(id.to_string());
     }
 
-    storage.save_accounts(&accounts)?;
+    // Save accounts, rolling back keychain on failure
+    if let Err(e) = storage.save_accounts(&accounts) {
+        // Attempt to clean up the keychain entry
+        let _ = keychain::delete_token(id);
+        return Err(e);
+    }
     Ok(())
 }
 
@@ -93,7 +98,10 @@ pub fn switch_interactive(storage: &impl Storage) -> Result<String, AppError> {
         .map_err(|e| AppError::config(format!("selection cancelled: {e}")))?;
 
     // Extract the account ID from the selection
-    let selected_id = selection.split_whitespace().next().unwrap_or("");
+    let selected_id = selection.split('(').next().map(|s| s.trim()).unwrap_or("");
+    if selected_id.is_empty() {
+        return Err(AppError::config(format!("could not parse selection: {}", selection)));
+    }
     switch(storage, selected_id)?;
     Ok(selected_id.to_string())
 }

@@ -98,7 +98,7 @@ pub fn clone_org(storage: &impl Storage, org: &str, limit: usize) -> Result<Vec<
 
 fn parse_repo_spec(spec: &str) -> Result<(String, &str), AppError> {
     let parts: Vec<&str> = spec.split('/').collect();
-    if parts.len() != 2 {
+    if parts.len() != 2 || parts[0].is_empty() || parts[1].is_empty() {
         return Err(AppError::invalid_input(format!(
             "invalid repository format '{}', expected owner/repo",
             spec

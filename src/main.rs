@@ -259,7 +259,7 @@ fn run_repo_command(storage: &FilesystemStorage, command: RepoCommands) -> Resul
                         "pushed_at": r.pushed_at,
                         "owner": r.owner.login,
                     });
-                    println!("{}", serde_json::to_string(&output).unwrap());
+                    println!("{}", serde_json::to_string(&output)?);
                 }
             } else {
                 for r in repos {
@@ -297,7 +297,7 @@ fn run_pr_command(storage: &FilesystemStorage, command: PrCommands) -> Result<()
             let prs = pr::list(storage, repo.as_deref(), limit)?;
 
             for p in prs {
-                let output = serde_json::to_string(&p).unwrap();
+                let output = serde_json::to_string(&p)?;
                 println!("{output}");
             }
         }
