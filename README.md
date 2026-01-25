@@ -1,37 +1,18 @@
-# rs-cli-tmpl
+# gho
 
-`rs-cli-tmpl` is a reference template for building Rust-based command line tools with a clean,
-layered architecture. It demonstrates how to separate concerns across the CLI interface,
-application commands, pure business logic, and I/O abstractions so new projects can start from a
-well-tested foundation.
+`gho` is a GitHub operator CLI for multi-account workflows. It provides account management,
+repository operations, and pull request listing with support for switching between multiple
+GitHub identities (personal, work, etc.).
 
-## Architectural Highlights
+## Features
 
-- **Two-tier structure** &mdash; `src/main.rs` handles CLI parsing, `src/lib.rs` exposes public 
-  command APIs, and `src/commands/` keeps business rules testable via the `Execute` trait.
-- **I/O abstraction** &mdash; `src/storage.rs` defines a `Storage` trait and a `FilesystemStorage`
-  implementation rooted at `~/.config/rs-cli-tmpl`, making it easy to swap storage backends.
-- **Configuration management** &mdash; `src/config.rs` provides a `Config` struct for externalized
-  configuration, enabling easy testing with custom storage paths.
-- **Robust testing strategy** &mdash; unit tests live next to their modules, `src/commands/test_support.rs`
-  offers a `MockStorage` for command logic tests (with `#[cfg(test)]`), and the `tests/` directory 
-  provides integration suites for both the library API and the CLI binary.
+- **Multi-account support**: Store and switch between multiple GitHub accounts.
+- **Keychain integration**: Tokens are stored securely in macOS Keychain.
+- **Repository operations**: List and clone repositories with protocol preference (SSH/HTTPS).
+- **PR listing**: View open pull requests with merge status.
+- **Organization support**: Bulk clone repositories from organizations.
 
-The template ships with minimal sample commands (`add`, `list`, and `delete`) that show how to
-thread dependencies through each layer. Replace or extend them with your own domain logic while
-reusing the same structure.
-
-## Storage Layout
-
-The template stores items under `~/.config/rs-cli-tmpl/<id>/item.txt`. For example, after running `rs-cli-tmpl add my-item --content '...'`:
-
-```text
-~/.config/rs-cli-tmpl/
-  my-item/
-    item.txt
-```
-
-## Quick Start
+## Installation
 
 ```bash
 cargo install --path .
@@ -39,62 +20,93 @@ cargo install --path .
 cargo build --release
 ```
 
-The optimized binary will be created at `target/release/rs-cli-tmpl`.
-
-## Usage
+## Quick Start
 
 ```bash
-rs-cli-tmpl --version    # Show version information
-rs-cli-tmpl add <id>     # Add an item
-rs-cli-tmpl list         # List items
-rs-cli-tmpl delete <id>  # Delete an item
+# Add an account
+gho account add personal --username myuser --token ghp_xxxx
+
+# List accounts
+gho account list
+
+# Switch active account
+gho account use personal
+
+# List repositories
+gho repo list
+
+# Clone a repository
+gho repo clone owner/repo
+
+# List open PRs
+gho pr list owner/repo
 ```
+
+## Commands
+
+### Account Management
+
+| Command | Alias | Description |
+|---------|-------|-------------|
+| `gho account add` | `gho a add` | Add a new GitHub account |
+| `gho account list` | `gho a ls` | List all configured accounts |
+| `gho account use [id]` | `gho a u` | Switch active account (interactive if no id) |
+| `gho account show` | `gho a show` | Show active account details |
+| `gho account remove <id>` | `gho a rm` | Remove an account |
+
+### Repository Operations
+
+| Command | Alias | Description |
+|---------|-------|-------------|
+| `gho repo list` | `gho r ls` | List repositories for active account |
+| `gho repo clone <repo>` | `gho r cl` | Clone a repository |
+| `gho repo clone --org <org>` | | Bulk clone from organization |
+
+### Pull Requests
+
+| Command | Alias | Description |
+|---------|-------|-------------|
+| `gho pr list [repo]` | `gho p ls` | List open PRs (detects repo from git) |
+
+## Storage
+
+Configuration is stored in `~/.config/gho/`:
+
+- `accounts.json`: Account definitions and active account ID
+- `state.json`: Runtime state (last org, last repo)
+
+Tokens are stored in macOS Keychain under the service `gho`.
+
+## Environment Variables
+
+- `GH_TOKEN` / `GITHUB_TOKEN`: Override token from Keychain
+- `GITHUB_REPOSITORY`: Provide repository context for PR operations
 
 ## Development Commands
 
-- `cargo build` &mdash; build a debug binary.
-- `cargo build --release` &mdash; build the optimized release binary.
-- `cargo fmt` &mdash; format code using rustfmt.
-- `cargo fmt --check && cargo clippy --all-targets --all-features -- -D warnings` &mdash; format check and lint with clippy.
-- `cargo test --all-targets --all-features` &mdash; run all tests.
-- `cargo fetch --locked` &mdash; pre-fetch dependencies.
-
-## Testing Culture
-
-- **Unit Tests**: Live alongside their modules inside `src/`, covering helper utilities and
-  filesystem boundaries.
-- **Command Logic Tests**: Use the mock storage in `src/commands/test_support.rs` (conditionally
-  compiled with `#[cfg(test)]`) to exercise command implementations without touching the filesystem.
-- **Integration Tests**: Located in the `tests/` directory. Separate crates cover the public
-  library API (`tests/commands_api.rs`) and CLI workflows (`tests/cli_commands.rs`,
-  `tests/cli_flow.rs`). Shared fixtures live in `tests/common/mod.rs`.
+- `cargo build` — build a debug binary.
+- `cargo build --release` — build the optimized release binary.
+- `cargo fmt --check && cargo clippy --all-targets --all-features -- -D warnings` — format check and lint.
+- `cargo test --all-targets --all-features` — run all tests.
 
 ## Project Structure
 
 ```
-rs-cli-tmpl/
+gho/
 ├── src/
 │   ├── main.rs           # CLI parsing (clap)
-│   ├── lib.rs            # Public API + default_storage() helper
-│   ├── config.rs         # Config struct for externalized configuration
+│   ├── lib.rs            # Public API exports
+│   ├── config.rs         # Config paths
 │   ├── error.rs          # AppError definitions
-│   ├── storage.rs        # Storage trait + FilesystemStorage
+│   ├── models.rs         # Data models (Account, Repository, etc.)
+│   ├── storage.rs        # JSON file storage
+│   ├── keychain.rs       # macOS Keychain integration
+│   ├── github.rs         # GitHub API client
 │   └── commands/         # Command implementations
-│       ├── mod.rs        # Execute trait
-│       ├── add_item.rs
-│       ├── list_items.rs
-│       ├── delete_item.rs
-│       └── test_support.rs  # MockStorage (#[cfg(test)])
+│       ├── mod.rs
+│       ├── account.rs    # Account management
+│       ├── repo.rs       # Repository operations
+│       └── pr.rs         # Pull request operations
 └── tests/
-    ├── common/           # Shared test fixtures
     └── ...
 ```
-
-## Adapting the Template
-
-1. Replace the sample commands in `src/commands/` with your own business logic.
-2. Extend `src/lib.rs` to wire new dependencies and expose public APIs.
-3. Update the CLI definitions in `src/main.rs` to match your command surface.
-4. Refresh the integration tests and documentation to describe the new behavior.
-
-Happy hacking!

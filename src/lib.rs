@@ -1,53 +1,15 @@
-//! Library entry point exposing the core command handlers.
+//! gho - GitHub operator CLI for multi-account workflows.
 
-mod commands;
+pub mod commands;
 pub mod config;
 pub mod error;
-mod storage;
+pub mod github;
+pub mod keychain;
+pub mod models;
+pub mod storage;
 
-use commands::{Execute, add_item::AddItem, delete_item::DeleteItem, list_items::ListItems};
-use error::AppError;
-use storage::FilesystemStorage;
-
-/// Create the default storage instance.
-fn default_storage() -> Result<FilesystemStorage, AppError> {
-    FilesystemStorage::new_default()
-}
-
-/// Add a new item to storage using the default filesystem backend.
-pub fn add(id: &str, content: &str) -> Result<(), AppError> {
-    let storage = default_storage()?;
-    let command = AddItem { id, content };
-
-    command.execute(&storage)?;
-    println!("✅ Added item '{id}'");
-    Ok(())
-}
-
-/// List all stored item identifiers.
-pub fn list() -> Result<Vec<String>, AppError> {
-    let storage = default_storage()?;
-    let command = ListItems;
-    let items = command.execute(&storage)?;
-
-    println!("📦 Stored items:");
-    if items.is_empty() {
-        println!("(none)");
-    } else {
-        for id in &items {
-            println!("- {id}");
-        }
-    }
-
-    Ok(items)
-}
-
-/// Delete an item from storage.
-pub fn delete(id: &str) -> Result<(), AppError> {
-    let storage = default_storage()?;
-    let command = DeleteItem { id };
-
-    command.execute(&storage)?;
-    println!("🗑️  Deleted item '{id}'");
-    Ok(())
-}
+pub use commands::{account, pr, repo};
+pub use config::Config;
+pub use error::AppError;
+pub use models::{Account, AccountKind, AccountsFile, Protocol, Repository};
+pub use storage::{FilesystemStorage, Storage};

@@ -1,4 +1,4 @@
-//! Shared testing utilities mirroring the reference project's fixture culture.
+//! Shared testing utilities for gho.
 
 use assert_cmd::Command;
 use std::env;
@@ -41,53 +41,37 @@ impl TestContext {
         &self.work_dir
     }
 
-    /// Convenience helper to create additional sibling workspaces (e.g., for linking scenarios).
-    pub fn create_workspace(&self, name: &str) -> PathBuf {
-        let path = self.home().join(name);
-        fs::create_dir_all(&path).expect("Failed to create additional workspace");
-        path
+    /// Path to the gho config directory.
+    pub fn config_dir(&self) -> PathBuf {
+        self.home().join(".config").join("gho")
     }
 
-    /// Populate the default workspace with an item file containing the provided contents.
-    pub fn write_item_file(&self, contents: &str) {
-        let item_path = self.work_dir().join("item.txt");
-        fs::write(&item_path, contents).expect("Failed to write item file for test");
+    /// Path to the accounts.json file.
+    pub fn accounts_path(&self) -> PathBuf {
+        self.config_dir().join("accounts.json")
     }
 
-    /// Create an item file in the given directory with the provided contents.
-    pub fn write_item_file_in<P: AsRef<Path>>(&self, dir: P, contents: &str) {
-        let path = dir.as_ref().join("item.txt");
-        fs::write(path, contents).expect("Failed to write item file");
-    }
-
-    /// Build a command for invoking the compiled `rs-cli-tmpl` binary within the default workspace.
+    /// Build a command for invoking the compiled `gho` binary within the default workspace.
     pub fn cli(&self) -> Command {
         self.cli_in(self.work_dir())
     }
 
-    /// Build a command for invoking the compiled `rs-cli-tmpl` binary within a custom directory.
+    /// Build a command for invoking the compiled `gho` binary within a custom directory.
     pub fn cli_in<P: AsRef<Path>>(&self, dir: P) -> Command {
-        let mut cmd =
-            Command::cargo_bin("rs-cli-tmpl").expect("Failed to locate rs-cli-tmpl binary");
+        let mut cmd = Command::cargo_bin("gho").expect("Failed to locate gho binary");
         cmd.current_dir(dir.as_ref()).env("HOME", self.home());
         cmd
     }
 
-    /// Return the path where the CLI stores a saved item file for the provided identifier.
-    pub fn saved_item_path(&self, id: &str) -> PathBuf {
-        self.home().join(".config").join("rs-cli-tmpl").join(id).join("item.txt")
+    /// Write accounts.json with given content.
+    pub fn write_accounts(&self, content: &str) {
+        fs::create_dir_all(self.config_dir()).expect("Failed to create config dir");
+        fs::write(self.accounts_path(), content).expect("Failed to write accounts.json");
     }
 
-    /// Assert that a saved item contains the provided value snippet.
-    pub fn assert_saved_item_contains(&self, id: &str, expected_snippet: &str) {
-        let item_path = self.saved_item_path(id);
-        assert!(item_path.exists(), "Expected saved item at {}", item_path.display());
-        let content = fs::read_to_string(&item_path).expect("Failed to read saved item");
-        assert!(
-            content.contains(expected_snippet),
-            "Saved item for id `{id}` did not contain `{expected}`; content: {content}",
-            expected = expected_snippet
-        );
+    /// Read accounts.json content.
+    pub fn read_accounts(&self) -> String {
+        fs::read_to_string(self.accounts_path()).unwrap_or_default()
     }
 
     /// Execute a closure after temporarily switching into the provided directory.
