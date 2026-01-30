@@ -1,6 +1,7 @@
 # Binary Release Workflow
 #
-# Builds and publishes gho binaries for multiple platforms on tag push.
+# Builds and publishes gho binaries for macOS platforms on tag push.
+# macOS-only due to keyring dependency using macOS Keychain.
 
 name: Release
 
@@ -17,13 +18,6 @@ jobs:
     strategy:
       matrix:
         include:
-          - os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
-            artifact: gho-linux-x86_64
-          - os: ubuntu-latest
-            target: aarch64-unknown-linux-gnu
-            artifact: gho-linux-aarch64
-            cross: true
           - os: macos-latest
             target: x86_64-apple-darwin
             artifact: gho-darwin-x86_64
@@ -42,17 +36,8 @@ jobs:
           toolchain: 1.90.0
           targets: ${{ matrix.target }}
 
-      - name: Install cross (for cross-compilation)
-        if: matrix.cross
-        run: cargo install cross --locked
-
-      - name: Build (native)
-        if: '!matrix.cross'
+      - name: Build
         run: cargo build --release --target ${{ matrix.target }}
-
-      - name: Build (cross)
-        if: matrix.cross
-        run: cross build --release --target ${{ matrix.target }}
 
       - name: Rename binary
         run: |
@@ -78,8 +63,6 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            gho-linux-x86_64
-            gho-linux-aarch64
             gho-darwin-x86_64
             gho-darwin-aarch64
           generate_release_notes: true
